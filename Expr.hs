@@ -143,12 +143,16 @@ intersect1 x [] = []
 intersect1 x (y:xs) | x == y = [x]
                     | otherwise = intersect1 x xs
 
+intersect :: Eq a => [a] -> [a] -> [a]
+intersect xs [] = []
+intersect xs (y:ys) = intersect1 y xs ??????
+
 {-
-  compare2 ("123", "123", [])
-= compare2 ("23", "123", "1")
-=   { ??? }
-  compare2 ("3", "123", "1")
+  1. finish intersect
+  2. redefine intersect1 and intersect using combinators, e.g.
+      filter, map, foldr, concat ....
 -}
+
 
 -- input1 input2 memorize"input2", output
 
