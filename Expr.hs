@@ -130,18 +130,25 @@ compare [] y:ys = y:ys
 compare x:xs y:ys  = if (x == y) then x:[xs][ys]
 -}
 
---compare2 :: （[Name], [Name], [Name]） -> （[Name],[Name],[Name]）
-compare2 ([],[],[]) =  ([],[],[])
-compare2 (x,[],[]) =  (x,[],[])
+compare2 :: Eq a => ([a], [a], [a]) -> ([a],[a],[a])
 compare2 (x,[],z) =  (x,[],z)
 compare2 ([],y:ys,[]) =  ([],ys,[])
 compare2 ([],y,z) =  ([],y,z)
-compare2 (x:xs,y:ys,[]) = if (x == y)
-    then compare2 (xs, y:ys, [x])
-    else compare2 (xs, y:ys, [])
 compare2 (x:xs,y:ys,zs) = if (x == y)
     then compare2 (xs, y:ys, x:zs)
     else compare2 (xs, y:ys, zs)
+
+intersect1 :: Eq a => a -> [a] -> [a]
+intersect1 x [] = []
+intersect1 x (y:xs) | x == y = [x]
+                    | otherwise = intersect1 x xs
+
+{-
+  compare2 ("123", "123", [])
+= compare2 ("23", "123", "1")
+=   { ??? }
+  compare2 ("3", "123", "1")
+-}
 
 -- input1 input2 memorize"input2", output
 
