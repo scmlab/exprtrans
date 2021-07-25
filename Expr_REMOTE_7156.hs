@@ -11,7 +11,7 @@ data Expr
 --  | Lam Name Expr
   | Quant Expr [Name] Expr Expr
   deriving (Eq, Show)
---lit
+--lit 字元
 data Op
   = EQ  -- relations
   | NEQ
@@ -65,7 +65,7 @@ data Fixity = Infix Int | InfixR Int | InfixL Int | Prefix Int | Postfix Int
 
 num :: Int -> Expr
 num = Lit . Num
-
+--整數多項式
 bol :: Bool -> Expr
 bol = Lit . Bol
 
@@ -79,62 +79,101 @@ sub = binOp Sub
 eq = binOp EQ
 
 
-free :: Expr -> [Name]
-free (Lit n) = []
-free (Var x) = [x]
-free (Op op) = []
-free (App e1 e2) =  (free e1) ++ (free e2)
-free (Quant e1 [n] e2 e3) = (filter (not.(== head notfree)) allvar) ++ (intersect (tail notfree) allvar)
-   where
-     notfree = intersect [n] (intersect (free e2) (free e3))
-     allvar = (free e1) ++ [n] ++ (free e2)  ++ (free e3)
-
-intersect :: Eq a => [a] -> [a] -> [a]
-intersect [] ys = []
-intersect (x:xs) ys = (filter (== x) ys) ++ (intersect xs ys)
-
-
-
-{- some test example -}
-
 test1 = ((num 3 `add` num 4) `add` num 5) `mul` (num 6)
 test2 = Quant (Op Add) ["i"] range body
    where range = Var "m" `lte` Var "i" `lte` Var "n"
          body = App (Var "f") (Var "i")
 test3 = ((Var "mo" `add` Var "q") `add` Var "e") `mul` (Var "v")
 
-test4 = Var "a" `eq` num 3 `add` num 1
-test5 = Var "b" `eq` num 3
-test6 = Var "a" `eq` Var "a"`add` Var "c"
-test7 = num 1 `eq` num 2
-test8 = Var "b" `add` Var "a"
+--val :: [(Name, Int)] -> Expr -> Int
+
 
 src01 = [("d",2)]
+
+test0 = Var "a" `eq` num 3 `add` num 1
+test00 = Var "b" `eq` num 3
+
+test002 = Var "a" `eq` Var "a"`add` Var "c"
+test003 = num 1 `eq` num 2
+test004 = Var "b" `add` Var "a"
+
+free :: Expr -> [Name]
+free (Lit n) = []
+free (Var x) = [x]
+free (Op op) = []
+free (App e1 e2) =  (free e1) ++ (free e2)
+{-
+
+free (Quant e1 [n] e2 e3) =
+  if thrid(xs1) == thrid(xs2)
+  then
+    where
+      xs1 = thrid (compare2 ((free e1),(free e2),[]))
+      xs2 = thrid (compare2 ((free e2),(free e1),[]))
+      ys1 = thrid (compare2 ((free e2),(free e3),[]))
+      ys2 = thrid (compare2 ((free e3),(free e2),[]))
+      zs = compare2 (xs,ys,zs)
+  --   ++ [n] ++ ["e2"]++(free e2) ++ ["e3"]++ (free e3)
+-}
+{-
+findfreevar :: [a] -> [Name] -> [Name] -> ([a],[Name],[Name])
+findfreevar [] (x:xs) (y:ys) =
+  if (x == y)
+    then findfreevar([x], xs, y:ys)
+    else findfreevar([ ], xs, y:ys)
+-}
+{-
+compare :: [Name] -> [Name] -> [Name] -> [Name]
+compare [] [] = []
+compare x:xs [] = x:xs
+compare [] y:ys = y:ys
+compare x:xs y:ys  = if (x == y) then x:[xs][ys]
+-}
+
+compare2 :: Eq a => ([a], [a], [a]) -> ([a],[a],[a])
+compare2 (x,[],z) =  (x,[],z)
+compare2 ([],y:ys,[]) =  ([],ys,[])
+compare2 ([],y,z) =  ([],y,z)
+compare2 (x:xs,y:ys,zs) = if (x == y)
+    then compare2 (xs, y:ys, x:zs)
+    else compare2 (xs, y:ys, zs)
 
 intersect1 :: Eq a => a -> [a] -> [a]
 intersect1 x [] = []
 intersect1 x (y:xs) | x == y = [x]
                     | otherwise = intersect1 x xs
 
-intersect1' :: Eq a => [a] -> [a] -> [a]
-intersect1' xs [] = []
-intersect1' xs (y:ys) = (intersect1 y xs) ++ (intersect1' xs ys)
+intersect :: Eq a => [a] -> [a] -> [a]
+intersect xs [] = []
+intersect xs (y:ys) = intersect1 y xs ??????
 
 {-
-0723
-  1. finish intersect _ok
+  1. finish intersect
   2. redefine intersect1 and intersect using combinators, e.g.
-      filter, map, foldr, concat ....ok
-  3. free (Quant e1 [n] e2 e3)... ok
-  4. test4,6 !!!
+      filter, map, foldr, concat ....
+-}
+
+
+-- input1 input2 memorize"input2", output
+
+
+
+--comaparecycle ()=
+
+
 
 swap :: (a, b) -> (b, a)
 swap (x, y) = (y, x)
 
 thrid :: (a,b,c)->c
 thrid (a,b,c) = c
--}
 
+forth :: (a,b,c,d)->d
+forth (a,b,c,d) = d
+
+
+
+-- head (compare2 x:xs)
 
 {-
 eval :: [(Name, Int)] -> Expr -> Int
@@ -143,33 +182,11 @@ x + 5 -> ???
 eval [("y",9)] (x ^ 3 + 5)
 -}
 
--- eval :: [(Name, Int)] -> Expr -> Int
---eval xs e1 = 0
 
---getanswer () =
-getanswer (Lit n) = n
--- :t num 3 :: Expr
--- :t Num 3 :: Lit
--- not int
+--eval :: [(Name, Int)] -> Expr -> Int
+--eval (n,x) e =
 
---getanswer (Var x) = [x]
+-- eval [] e = 0
+-- eval [(n,x)] e =
 
---eval [(x,y)] e1 =
-
-
--- eval :: [(Name, Int)] -> Expr -> Int
--- eval [] (Lit n) = n
--- eval [(y,n)] (Var x) = filter (\x \y -> (x == y)) . (\x -> y
--- eval [] (Op op) = [op]
---eval [] (App e1 e2) =  (eval e1) ++ (eval e2)
-
-{-
-0723
-compare2 :: Eq a => ([a], [a], [a]) -> ([a],[a],[a])
-compare2 (x,[],z) =  (x,[],z)
-compare2 ([],y:ys,[]) =  ([],ys,[])
-compare2 ([],y,z) =  ([],y,z)
-compare2 (x:xs,y:ys,zs) = if (x == y)
-    then compare2 (xs, y:ys, x:zs)
-    else compare2 (xs, y:ys, zs)
--}
+--free :: Expr -> [Name]
