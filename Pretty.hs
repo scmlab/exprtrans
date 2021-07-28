@@ -20,8 +20,9 @@ precApply = 12
 instance SPrint Expr where
  sprintsPrec _ (Var x) = (x++)
  sprintsPrec _ (Lit n) = sprints n
- sprintsPrec _ (Op op) = sprints op
- sprintsPrec p (App (App (Op op) e1) e2) =
+ -- sprintsPrec _ (Op op) = sprints op
+ sprintsPrec p (BApp op e1 e2) =
+ -- sprintsPrec p (App (App (Op op) e1) e2) =
    case precedence op of
      Infix  n -> showParen (p > n) $
                   sprintsPrec (n+1) e1 . (' ':) . sprints op . (' ':) .
@@ -38,19 +39,21 @@ instance SPrint Expr where
      Postfix n -> showParen (p > precApply) $
                    (showParen True $ sprintsPrec (precApply + 1) e1. (' ':) .
                       sprints op) . (' ':) . sprintsPrec (precApply + 1) e2
- sprintsPrec p (App (Op op) e) =
+ sprintsPrec p (UApp op e) =
+  -- sprintsPrec p (App (Op op) e) =
          showParen (p > precApply) $
-        ('(':) . sprints op . (") " ++) . sprintsPrec (precApply + 1) e
+         -- ('(':) .
+           sprints op . (" " ++) . sprintsPrec (precApply + 1) e
  sprintsPrec p (App e1 e2) =
     showParen (p > precApply) $
       sprintsPrec (precApply + 1) e1 . (' ':) .
       sprintsPrec (precApply + 1) e2
  sprintsPrec _ (Quant eop xs range body) =
-   ('⟨':) . sprintQOp eop . (' ':) . sprintsSep (' ':) xs .
+   ('⟨':) . sprints eop . (' ':) . sprintsSep (' ':) xs .
     (" : " ++) . sprints range .
     (" : " ++) . sprints body . ('⟩':)
-  where sprintQOp (Op op) = sprints op
-        sprintQOp e = sprintsPrec precApply e
+  -- where sprintQOp (Op op) = sprints op
+        -- sprintQOp e = sprintsPrec precApply e
 
 {-
 

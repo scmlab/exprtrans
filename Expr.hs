@@ -6,12 +6,14 @@ type Name = String
 data Expr
   = Lit Lit
   | Var Name
-  | Op Op
+  | BApp Op Expr Expr   -- e.g. BApp Add e1 e2
+  | UApp Op Expr        -- e.g. Neg e
+  | Quant Op [Name] Expr Expr
   | App Expr Expr
---  | Lam Name Expr
-  | Quant Expr [Name] Expr Expr
+  --  | Op Op
+  --  | Lam Name Expr
   deriving (Eq, Show)
---lit
+
 data Op
   = EQ  -- relations
   | NEQ
@@ -70,8 +72,9 @@ bol :: Bool -> Expr
 bol = Lit . Bol
 
 binOp :: Op -> Expr -> Expr -> Expr
-binOp op e1 e2 = App (App (Op op) e1) e2
+binOp op e1 e2 = BApp op e1 e2 -- App (App (Op op) e1) e2
 
+  -- SCM: not necessary now, but might be useful in the future.
 add = binOp Add
 mul = binOp Mul
 lte = binOp LTE
@@ -82,12 +85,15 @@ eq = binOp EQ
 free :: Expr -> [Name]
 free (Lit n) = []
 free (Var x) = [x]
+-- SCM: finish the definition
+{-
 free (Op op) = []
 free (App e1 e2) =  (free e1) ++ (free e2)
 free (Quant e1 [n] e2 e3) = (filter (not.(== head notfree)) allvar) ++ (intersect (tail notfree) allvar)
    where
      notfree = intersect [n] (intersect (free e2) (free e3))
      allvar = (free e1) ++ [n] ++ (free e2)  ++ (free e3)
+-}
 
 intersect :: Eq a => [a] -> [a] -> [a]
 intersect [] ys = []
@@ -98,7 +104,7 @@ intersect (x:xs) ys = (filter (== x) ys) ++ (intersect xs ys)
 {- some test example -}
 
 test1 = ((num 3 `add` num 4) `add` num 5) `mul` (num 6)
-test2 = Quant (Op Add) ["i"] range body
+test2 = Quant Add ["i"] range body
    where range = Var "m" `lte` Var "i" `lte` Var "n"
          body = App (Var "f") (Var "i")
 test3 = ((Var "mo" `add` Var "q") `add` Var "e") `mul` (Var "v")
