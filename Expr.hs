@@ -89,7 +89,7 @@ free (BApp op e1 e2) = free e1 ++ free e2
 -- e.g. BApp Add e1 e2
 free (UApp op e) = free e
 -- e.g. Neg e
-free (Quant op xs e1 e2) = fst (subtraction ((free e1 ++ free e2), xs))
+free (Quant op xs e1 e2) = subtraction ((free e1 ++ free e2), xs)
 free (App e1 e2) = free e1 ++ free e2
 
 -- SCM: finish the definition
@@ -106,17 +106,16 @@ free (Quant e1 [n] e2 e3) = (filter (not.(== head notfree)) allvar) ++ (intersec
 -- intersect [] ys = []
 -- intersect (x:xs) ys =  intersect xs (filter (== x) ys)
 
-subtraction1 :: Eq a => [a] -> [a] -> [a]
-subtraction1 [] xs = []
-subtraction1 xs [] = xs
-subtraction1 (x:xs) [y] | (x == y) = subtraction1 xs [y]
-                        | otherwise = x:(subtraction1 xs [y])
+subtraction1 :: Eq a => [a] -> a -> [a]
+subtraction1 [] y = []
+subtraction1 (x:xs) y | (x == y)  = subtraction1 xs y
+                      | otherwise = x : subtraction1 xs y
 
-subtraction :: Eq a => ([a],[a]) -> ([a],[a])
-subtraction ([], []) = ([], [])
-subtraction (xs, []) = (xs, [])
-subtraction (xs, y:ys) = subtraction (newxs, ys)
-           where newxs = subtraction1 xs [y]
+subtraction :: Eq a => ([a],[a]) -> [a]
+subtraction ([], []) = []
+subtraction (xs, []) = xs
+subtraction (xs, y:ys) = subtraction (filter (not . (==y)) xs, ys)
+                         -- was: subtraction1 xs y
 
 
 
@@ -172,24 +171,86 @@ x + 5 -> ???
 eval [("y",9)] (x ^ 3 + 5)
 -}
 
-
+eval [] (BApp Add (Lit (Num 3)) (Lit (Num 4)))
 
 eval :: [(Name, Int)] -> Expr -> Int
-eval [] (Lit (Num n)) = n
-eval (x:xs) (Lit (Num n)) = n
+eval _     (Lit (Num n)) = n
 -- eval [] (Lit (Bol b)) = 0
 -- eval [] (Var y) = 0
 eval (x:xs) (Var y) | (y == fst x) = snd x
                     | otherwise = eval xs (Var y)
 eval (x:xs) (BApp Add e1 e2) = (eval (x:xs) e1) + (eval (x:xs) e2)
 eval (x:xs) (BApp Sub e1 e2) = (eval (x:xs) e1) - (eval (x:xs) e2)
-eval (x:xs) (BApp Mul e1 e2) = (eval (x:xs) e1) * (eval (x:xs) e2)
+eval xs (BApp Mul e1 e2) = (eval xs e1) * (eval xs e2)
 -- eval (x:xs) (BApp Div e1 e2) = (eval (x:xs) e1) / (eval (x:xs) e2)
 -- eval [] (BApp lte e1 e2) = (eval [] e1) + (eval [] e2)
 -- eval [] (BApp eq e1 e2) = (eval [] e1) + (eval [] e2)
 eval (x:xs) (UApp Neg e1) = - (eval (x:xs) e1)
 --eval (x:xs) (App e1 e2) = App (eval (x:xs) e1) (eval (x:xs) e2)
 
+{-
+
+* There is a built-in function lookup, having this type:
+
+   lookup :: Eq a => a -> [(a, b)] -> Maybe b
+
+* Also, the Maybe datatype can be defined by:
+
+   data Maybe a = Just a | Nothing
+
+* If f has type Int -> Maybe Char, to use it you may have to
+
+    case f 3 of
+      Just c -> ... c ...  -- c has type Char
+      Nothing -> Nothing
+
+* Exercise: Redefine eval. Let it have type:
+
+   eval :: [(Name, Int)] -> Expr -> Maybe Int
+
+   eval [("a", 3), ("b", 4)]  (.... a b ... c ...) = Nothing
+   eval [("a", 3), ("b", 4)] (a + b + 3) = Just 10
+
+   -- In the (Var x) case, use lookup above.
+
+* Exercise: define your own lookup. Use a different name,
+  e.g. lookUp.
+
+* Exercise: extend eval
+
+  data Val = VNum Int | VBol Bool
+
+  eval :: [(Name, Int)] -> Expr -> Maybe Val
+
+  eval [("a", 3), ("b", 4)] (a + b + 3) = Just (VNum 10)
+  eval [("a", 3), ("b", 4)] (a == (b - 2)) = Just (VBol False)
+  eval [("a", 3), ("b", 4)] (a + c) = Nothing
+  eval [] (Lit (Num 3)) = Just (VNum 3)
+  eval [("a", 3), ("b", 4)] (a + (b == a)) = Nothing
+
+---
+
+* Declarations in Haskell
+
+  f x = ...
+    where y = x + 1
+          z = (x == y - 1)
+
+  g _ = ...x ...
+     where x = x + 1
+           xs = 1 : xs
+
+  let xs = 1 : xs
+  take 20 xs
+
+* In Python or C....
+   y = x
+   y = x + 1
+   x = x + 1
+
+  { x + 1 = 3 } x := x + 1  { x = 3 }
+
+-}
 
 
 
