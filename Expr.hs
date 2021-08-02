@@ -1,5 +1,5 @@
 module Expr where
-import Prelude hiding (EQ, GT, LT)
+import Prelude hiding (EQ, GT, LT, div)
 
 type Name = String
 
@@ -80,11 +80,18 @@ mul = binOp Mul
 lte = binOp LTE
 sub = binOp Sub
 eq = binOp EQ
-
+div = binOp Div
 
 free :: Expr -> [Name]
 free (Lit n) = []
 free (Var x) = [x]
+free (BApp op e1 e2) = free e1 ++ free e2
+-- e.g. BApp Add e1 e2
+free (UApp op e) = free e
+-- e.g. Neg e
+free (Quant op xs e1 e2) = fst (subtraction ((free e1 ++ free e2), xs))
+free (App e1 e2) = free e1 ++ free e2
+
 -- SCM: finish the definition
 {-
 free (Op op) = []
@@ -95,36 +102,52 @@ free (Quant e1 [n] e2 e3) = (filter (not.(== head notfree)) allvar) ++ (intersec
      allvar = (free e1) ++ [n] ++ (free e2)  ++ (free e3)
 -}
 
-intersect :: Eq a => [a] -> [a] -> [a]
-intersect [] ys = []
-intersect (x:xs) ys = (filter (== x) ys) ++ (intersect xs ys)
+-- intersect :: Eq a => [a] -> [a] -> [a]
+-- intersect [] ys = []
+-- intersect (x:xs) ys =  intersect xs (filter (== x) ys)
+
+subtraction1 :: Eq a => [a] -> [a] -> [a]
+subtraction1 [] xs = []
+subtraction1 xs [] = xs
+subtraction1 (x:xs) [y] | (x == y) = subtraction1 xs [y]
+                        | otherwise = x:(subtraction1 xs [y])
+
+subtraction :: Eq a => ([a],[a]) -> ([a],[a])
+subtraction ([], []) = ([], [])
+subtraction (xs, []) = (xs, [])
+subtraction (xs, y:ys) = subtraction (newxs, ys)
+           where newxs = subtraction1 xs [y]
 
 
 
 {- some test example -}
-
 test1 = ((num 3 `add` num 4) `add` num 5) `mul` (num 6)
 test2 = Quant Add ["i"] range body
    where range = Var "m" `lte` Var "i" `lte` Var "n"
          body = App (Var "f") (Var "i")
-test3 = ((Var "mo" `add` Var "q") `add` Var "e") `mul` (Var "v")
+test3 = ((Var "a" `add` Var "b") `add` Var "a") `mul` (Var "b")
 
-test4 = Var "a" `eq` num 3 `add` num 1
+test4 = Var "a" `mul` (num 3 `add` num 1)
 test5 = Var "b" `eq` num 3
-test6 = Var "a" `eq` Var "a"`add` Var "c"
-test7 = num 1 `eq` num 2
-test8 = Var "b" `add` Var "a"
 
-src01 = [("d",2)]
+test6 = Quant Add ["a","i"] range body
+   where range = Var "a" `lte` Var "i" `lte` Var "b"
+         body = App (Var "b") (Var "i")
 
-intersect1 :: Eq a => a -> [a] -> [a]
-intersect1 x [] = []
-intersect1 x (y:xs) | x == y = [x]
-                    | otherwise = intersect1 x xs
+test7 = num 1 `add` num 2
+test8 = Var "a" `add` Var "b"
+test9 = Var "a" `add` (UApp Neg (Var "b"))
+testlist = [("a",-2),("b",5)]
 
-intersect1' :: Eq a => [a] -> [a] -> [a]
-intersect1' xs [] = []
-intersect1' xs (y:ys) = (intersect1 y xs) ++ (intersect1' xs ys)
+
+-- intersect1 :: Eq a => a -> [a] -> [a]
+-- intersect1 x [] = []
+-- intersect1 x (y:xs) | x == y = [x]
+--                     | otherwise = intersect1 x xs
+--
+-- intersect1' :: Eq a => [a] -> [a] -> [a]
+-- intersect1' xs [] = []
+-- intersect1' xs (y:ys) = (intersect1 y xs) ++ (intersect1' xs ys)
 
 {-
 0723
@@ -142,32 +165,33 @@ thrid (a,b,c) = c
 -}
 
 
-{-
+{- 0731 ok
 eval :: [(Name, Int)] -> Expr -> Int
 3 + 5 -> 8
 x + 5 -> ???
 eval [("y",9)] (x ^ 3 + 5)
 -}
 
--- eval :: [(Name, Int)] -> Expr -> Int
---eval xs e1 = 0
-
---getanswer () =
-getanswer (Lit n) = n
--- :t num 3 :: Expr
--- :t Num 3 :: Lit
--- not int
-
---getanswer (Var x) = [x]
-
---eval [(x,y)] e1 =
 
 
--- eval :: [(Name, Int)] -> Expr -> Int
--- eval [] (Lit n) = n
--- eval [(y,n)] (Var x) = filter (\x \y -> (x == y)) . (\x -> y
--- eval [] (Op op) = [op]
---eval [] (App e1 e2) =  (eval e1) ++ (eval e2)
+eval :: [(Name, Int)] -> Expr -> Int
+eval [] (Lit (Num n)) = n
+eval (x:xs) (Lit (Num n)) = n
+-- eval [] (Lit (Bol b)) = 0
+-- eval [] (Var y) = 0
+eval (x:xs) (Var y) | (y == fst x) = snd x
+                    | otherwise = eval xs (Var y)
+eval (x:xs) (BApp Add e1 e2) = (eval (x:xs) e1) + (eval (x:xs) e2)
+eval (x:xs) (BApp Sub e1 e2) = (eval (x:xs) e1) - (eval (x:xs) e2)
+eval (x:xs) (BApp Mul e1 e2) = (eval (x:xs) e1) * (eval (x:xs) e2)
+-- eval (x:xs) (BApp Div e1 e2) = (eval (x:xs) e1) / (eval (x:xs) e2)
+-- eval [] (BApp lte e1 e2) = (eval [] e1) + (eval [] e2)
+-- eval [] (BApp eq e1 e2) = (eval [] e1) + (eval [] e2)
+eval (x:xs) (UApp Neg e1) = - (eval (x:xs) e1)
+--eval (x:xs) (App e1 e2) = App (eval (x:xs) e1) (eval (x:xs) e2)
+
+
+
 
 {-
 0723
