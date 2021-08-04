@@ -134,6 +134,15 @@ test0 = Var "a" `add` (UApp Neg (Var "b"))
 testlist = [("a",-2),("b",5)]
 
 
+bind :: Maybe a -> (a -> Maybe b) -> Maybe b
+m `bind` f = case m of
+               Just n -> f n
+               Nothing -> Nothing
+
+{-   .... `bind` (\n ->
+     .... )
+-}
+
 eval1 :: [(Name, Int)] -> Expr -> Maybe Int
 eval1 _  (Lit (Num n)) = Just n
 eval1 [] (Lit (Bol b)) = Nothing
@@ -233,6 +242,11 @@ eval xs (BApp op e1 e2) = case eval xs e1 of
   eval [("a", 3), ("b", 4)] (a + c) = Nothing
   eval [] (Lit (Num 3)) = Just (VNum 3)
   eval [("a", 3), ("b", 4)] (a + (b == a)) = Nothing
+
+* Exercise: refactor the code and make the
+  "application of binary operators" a separated function.
+
+* Exercise: rewrite eval1 and eval using bind.
 
 ---
 
