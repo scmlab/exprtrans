@@ -1,5 +1,5 @@
 module Expr where
-import Prelude hiding (EQ, GT, LT, div)
+import Prelude hiding (EQ, GT, LT)
 
 type Name = String
 
@@ -77,10 +77,16 @@ binOp op e1 e2 = BApp op e1 e2 -- App (App (Op op) e1) e2
   -- SCM: not necessary now, but might be useful in the future.
 add = binOp Add
 mul = binOp Mul
-lte = binOp LTE
 sub = binOp Sub
+mod' = binOp Mod
+div' = binOp Div
+
 eq = binOp EQ
-div = binOp Div
+neq = binOp NEQ
+lte = binOp LTE
+lt = binOp LT
+gt = binOp GT
+
 
 free :: Expr -> [Name]
 free (Lit n) = []
@@ -93,18 +99,6 @@ free (Quant op xs e1 e2) = subtraction ((free e1 ++ free e2), xs)
 free (App e1 e2) = free e1 ++ free e2
 
 -- SCM: finish the definition
-{-
-free (Op op) = []
-free (App e1 e2) =  (free e1) ++ (free e2)
-free (Quant e1 [n] e2 e3) = (filter (not.(== head notfree)) allvar) ++ (intersect (tail notfree) allvar)
-   where
-     notfree = intersect [n] (intersect (free e2) (free e3))
-     allvar = (free e1) ++ [n] ++ (free e2)  ++ (free e3)
--}
-
--- intersect :: Eq a => [a] -> [a] -> [a]
--- intersect [] ys = []
--- intersect (x:xs) ys =  intersect xs (filter (== x) ys)
 
 subtraction1 :: Eq a => [a] -> a -> [a]
 subtraction1 [] y = []
@@ -126,68 +120,80 @@ test2 = Quant Add ["i"] range body
          body = App (Var "f") (Var "i")
 test3 = ((Var "a" `add` Var "b") `add` Var "a") `mul` (Var "b")
 
-test4 = Var "a" `mul` (num 3 `add` num 1)
-test5 = Var "b" `eq` num 3
+test4 = Var "a" `eq` (num 3 `add` num 1)
+test5 = Var "b"
 
 test6 = Quant Add ["a","i"] range body
    where range = Var "a" `lte` Var "i" `lte` Var "b"
          body = App (Var "b") (Var "i")
 
-test7 = num 1 `add` num 2
-test8 = Var "a" `add` Var "b"
-test9 = Var "a" `add` (UApp Neg (Var "b"))
+test7 = num 1
+test8 = Var "a" `neq` Var "b"
+test9 = Var "a" `div'` Var "b"
+test0 = Var "a" `add` (UApp Neg (Var "b"))
 testlist = [("a",-2),("b",5)]
 
 
--- intersect1 :: Eq a => a -> [a] -> [a]
--- intersect1 x [] = []
--- intersect1 x (y:xs) | x == y = [x]
---                     | otherwise = intersect1 x xs
---
--- intersect1' :: Eq a => [a] -> [a] -> [a]
--- intersect1' xs [] = []
--- intersect1' xs (y:ys) = (intersect1 y xs) ++ (intersect1' xs ys)
+eval1 :: [(Name, Int)] -> Expr -> Maybe Int
+eval1 _  (Lit (Num n)) = Just n
+eval1 [] (Lit (Bol b)) = Nothing
+eval1 [] (Var y) = Nothing
+eval1 xs (Var y) = case lookup y xs of
+                          Just n -> Just n
+                          otherwise -> Nothing
 
-{-
-0723
-  1. finish intersect _ok
-  2. redefine intersect1 and intersect using combinators, e.g.
-      filter, map, foldr, concat ....ok
-  3. free (Quant e1 [n] e2 e3)... ok
-  4. test4,6 !!!
+eval1 xs (UApp Neg e1) = case eval1 xs e1 of
+                            Just n -> Just (-n)
+                            otherwise -> Nothing
 
-swap :: (a, b) -> (b, a)
-swap (x, y) = (y, x)
+eval1 xs (BApp op e1 e2) = case eval1 xs e1  of
+                            Just n -> case eval1 xs e2 of
+                                          Just m -> case op of
+                                                    Add -> Just (m + n)
+                                                    Sub -> Just (m - n)
+                                                    Mul -> Just (m * n)
+                                                    Div -> Just (div m n)
+                                                    Mod -> Just (mod m n)
+                                                    otherwise -> Nothing
+                            otherwise -> Nothing
 
-thrid :: (a,b,c)->c
-thrid (a,b,c) = c
--}
+-- Exercise: extend eval
+data Val = VNum Int | VBol Bool
+          deriving (Eq, Show)
 
+eval :: [(Name, Int)] -> Expr -> Maybe Val
+eval _ (Lit (Num n)) = Just (VNum n)
+eval _ (Lit (Bol b)) = Just (VBol b)
+eval [] (Var y) = Nothing
+eval xs (Var y) = case lookup y xs of
+                          Just n -> Just (VNum n)
+                          otherwise -> Nothing
 
-{- 0731 ok
-eval :: [(Name, Int)] -> Expr -> Int
-3 + 5 -> 8
-x + 5 -> ???
-eval [("y",9)] (x ^ 3 + 5)
--}
+eval xs (UApp Neg e1) = case eval xs e1 of
+                            Just (VNum n)  -> Just (VNum (-n))
+                            otherwise -> Nothing
 
-eval [] (BApp Add (Lit (Num 3)) (Lit (Num 4)))
+eval xs (BApp op e1 e2) = case eval xs e1 of
+                            Just (VNum n) -> case eval xs e2 of
+                                          Just (VNum m) -> case op of
+                                                    Add -> Just (VNum (m + n))
+                                                    Sub -> Just (VNum (m - n))
+                                                    Mul -> Just (VNum (m * n))
+                                                    Div -> Just (VNum (div m n))
+                                                    Mod -> Just (VNum (mod m n))
+                                                    EQ  -> Just (VBol (m == n))
+                                                    NEQ -> Just (VBol (m /= n))
+                                                    LTE -> Just (VBol (m <= n))
+                                                    GTE -> Just (VBol (m >= n))
+                                                    LT  -> Just (VBol (m < n))
+                                                    GT  -> Just (VBol (m > n))
+                                                    otherwise -> Nothing
+                                          otherwise -> Nothing
+                            otherwise -> Nothing -- something intersting 0802
 
-eval :: [(Name, Int)] -> Expr -> Int
-eval _     (Lit (Num n)) = n
--- eval [] (Lit (Bol b)) = 0
--- eval [] (Var y) = 0
-eval (x:xs) (Var y) | (y == fst x) = snd x
-                    | otherwise = eval xs (Var y)
-eval (x:xs) (BApp Add e1 e2) = (eval (x:xs) e1) + (eval (x:xs) e2)
-eval (x:xs) (BApp Sub e1 e2) = (eval (x:xs) e1) - (eval (x:xs) e2)
-eval xs (BApp Mul e1 e2) = (eval xs e1) * (eval xs e2)
--- eval (x:xs) (BApp Div e1 e2) = (eval (x:xs) e1) / (eval (x:xs) e2)
--- eval [] (BApp lte e1 e2) = (eval [] e1) + (eval [] e2)
--- eval [] (BApp eq e1 e2) = (eval [] e1) + (eval [] e2)
-eval (x:xs) (UApp Neg e1) = - (eval (x:xs) e1)
---eval (x:xs) (App e1 e2) = App (eval (x:xs) e1) (eval (x:xs) e2)
-
+-- eval xs (Quant op [ys] e1 e2) = case eval xs e1 of
+--                             Just (VNum n)  -> Just (VNum (-n))
+--                             otherwise -> Nothing
 {-
 
 * There is a built-in function lookup, having this type:
@@ -263,4 +269,48 @@ compare2 ([],y,z) =  ([],y,z)
 compare2 (x:xs,y:ys,zs) = if (x == y)
     then compare2 (xs, y:ys, x:zs)
     else compare2 (xs, y:ys, zs)
+-}
+
+{-
+0723
+  1. finish intersect _ok
+  2. redefine intersect1 and intersect using combinators, e.g.
+      filter, map, foldr, concat ....ok
+  3. free (Quant e1 [n] e2 e3)... ok
+
+0731 ok
+eval :: [(Name, Int)] -> Expr -> Int
+3 + 5 -> 8
+x + 5 -> ???
+eval [("y",9)] (x ^ 3 + 5)
+-}
+
+{-
+free (Op op) = []
+free (App e1 e2) =  (free e1) ++ (free e2)
+free (Quant e1 [n] e2 e3) = (filter (not.(== head notfree)) allvar) ++ (intersect (tail notfree) allvar)
+   where
+     notfree = intersect [n] (intersect (free e2) (free e3))
+     allvar = (free e1) ++ [n] ++ (free e2)  ++ (free e3)
+-}
+
+--eval [] (BApp Add (Lit (Num 3)) (Lit (Num 4)))
+{-
+eval :: [(Name, Int)] -> Expr -> Int
+eval _     (Lit (Num n)) = n
+-- eval [] (Lit (Bol b)) = 0
+-- eval [] (Var y) = 0
+eval (x:xs) (Var y) | (y == fst x) = snd x
+                    | otherwise = eval xs (Var y)
+eval xs (BApp Add e1 e2) = (eval xs e1) + (eval xs e2)
+eval xs (BApp Sub e1 e2) = (eval xs e1) - (eval xs e2)
+eval xs (BApp Mul e1 e2) = (eval xs e1) * (eval xs e2)
+-- eval (x:xs) (BApp Div e1 e2) = (eval (x:xs) e1) / (eval (x:xs) e2)
+-- eval [] (BApp lte e1 e2) = (eval [] e1) + (eval [] e2)
+-- eval [] (BApp eq e1 e2) = (eval [] e1) + (eval [] e2)
+eval (x:xs) (UApp Neg e1) = - (eval (x:xs) e1)
+--eval (x:xs) (App e1 e2) = App (eval (x:xs) e1) (eval (x:xs) e2)
+
+lookUp ::
+
 -}
