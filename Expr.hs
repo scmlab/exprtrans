@@ -88,29 +88,39 @@ lt = binOp LT
 gt = binOp GT
 
 -- calculate
-cal1 :: Op -> Maybe Int -> Maybe Int
-cal1 Neg (Just m) = Just (-m)
+cal1 :: Op -> Int -> Maybe Int
+cal1 Neg m = Just (-m)
 
-cal2 :: Op -> Maybe Int -> Maybe Int -> Maybe Int
-cal2 Add (Just m) (Just n) = Just (m + n)
-cal2 Sub (Just m) (Just n) = Just (m - n)
-cal2 Mul (Just m) (Just n) = Just (m * n)
-cal2 Mod (Just m) (Just n) = Just (mod m n)
-cal2 Div (Just m) (Just n) = Just (div m n)
+cal2 :: Op -> Int -> Int -> Maybe Int
+cal2 Add m n = Just (m + n)
+cal2 Sub m n = Just (m - n)
+cal2 Mul m n = Just (m * n)
+cal2 Mod m n = case n of
+                  0 -> Nothing
+                  otherwise -> Just (mod m n)
+cal2 Div m n = case n of
+                  0 -> Nothing
+                  otherwise -> Just (div m n)
 
-cal :: Op -> Maybe Val -> Maybe Val -> Maybe Val
-cal Add (Just (VNum m)) (Just (VNum n)) = Just (VNum (m + n))
-cal Sub (Just (VNum m)) (Just (VNum n)) = Just (VNum (m - n))
-cal Mul (Just (VNum m)) (Just (VNum n)) = Just (VNum (m * n))
-cal Mod (Just (VNum m)) (Just (VNum n)) = Just (VNum (mod m n))
-cal Div (Just (VNum m)) (Just (VNum n)) = Just (VNum (div m n))
+cal0 :: Op -> Val -> Maybe Val
+cal0 Neg (VNum m) = Just (VNum (-m))
 
-cal EQ  (Just (VNum m)) (Just (VNum n)) = Just (VBol (m == n))
-cal NEQ (Just (VNum m)) (Just (VNum n)) = Just (VBol (m /= n))
-cal LTE (Just (VNum m)) (Just (VNum n)) = Just (VBol (m <= n))
-cal GTE (Just (VNum m)) (Just (VNum n)) = Just (VBol (m >= n))
-cal LT  (Just (VNum m)) (Just (VNum n)) = Just (VBol (m < n))
-cal GT  (Just (VNum m)) (Just (VNum n)) = Just (VBol (m > n))
+cal :: Op -> Val -> Val -> Maybe Val
+cal Add (VNum m) (VNum n) = Just (VNum (m + n))
+cal Sub (VNum m) (VNum n) = Just (VNum (m - n))
+cal Mul (VNum m) (VNum n) = Just (VNum (m * n))
+cal Mod (VNum m) (VNum n) = case n of
+                              0 -> Nothing
+                              otherwise -> Just (VNum (mod m n))
+cal Div (VNum m) (VNum n) = case n of
+                              0 -> Nothing
+                              otherwise -> Just (VNum (div m n))
+cal EQ  (VNum m) (VNum n) = Just (VBol (m == n))
+cal NEQ (VNum m) (VNum n) = Just (VBol (m /= n))
+cal LTE (VNum m) (VNum n) = Just (VBol (m <= n))
+cal GTE (VNum m) (VNum n) = Just (VBol (m >= n))
+cal LT  (VNum m) (VNum n) = Just (VBol (m < n))
+cal GT  (VNum m) (VNum n) = Just (VBol (m > n))
 
 
 
@@ -147,57 +157,74 @@ test2 = Quant Add ["i"] range body
 test3 = ((Var "a" `add` Var "b") `add` Var "a") `mul` (Var "b")
 
 test4 = Var "a" `eq` (num 3 `add` num 1)
-test5 = Var "b"
+test5 = UApp Neg (Var "b")
 
 test6 = Quant Add ["a","i"] range body
    where range = Var "a" `lte` Var "i" `lte` Var "b"
          body = App (Var "b") (Var "i")
 
-test7 = Var "a" `add` Var "b"
+test7 = Var "a"`lte` (Var "n" `add` num 1 )
 test8 = (Var "a" `add` Var "b") `eq` ((num 1 `mul` Var "a") `add` num 1)
 test9 = Var "a" `eq` ((num 1 `mul` Var "a") `add` num 1)
 test0 = Var "a" `add` (UApp Neg (Var "b"))
 testlist = [("a",-2),("b",5)]
 
+--shift [("a",1)] Var "n"`lte` (Var "a" `add` num 1 ) --> n `lte` num(a + 1)
+--shift [("a",1)] Var "n"`lte` (Var "a" `add` num 1 )`mul` Var "n"
+
+{-
+
+shift Var "n"`lte` (Var "a" `add` num 1 ) =
+
+
+move ::
+move xs op e1 e2 = case op of
+                Add -> move op (open xs e1) (open xs e2)
+                EQ ->  (extend xs e1 , extend xs e2)
+extend ::
+--展開 : 遇到等式拆兩側、遇到計算往下拆
+extend ::
+extend xs e1 = eval xs e1
+extend xs Add e1 e2 = eval xs e1 e2
+extend xs EQ e1 e2 = (extend xs e1, extend xs e2)
+展開等式兩側做遞迴，直到式中沒有多層括號
+當都整理完了
+帶入變數處理
+比對兩側是否都有指定變數
+移項
+-}
+
 bind :: Maybe a -> (a -> Maybe b) -> Maybe b
 m `bind` f = case m of
-               Just m -> f m
+               Just n -> f n
                Nothing -> Nothing
 
-bind2 :: (a -> b -> Maybe c) -> a -> Maybe b ->  Maybe c
-bind2 f op n = case n of
-                Just n -> f op n
+bind2 :: (a -> a -> Maybe b) -> Maybe a -> Maybe a -> Maybe b
+bind2 f m n = case (m , n) of
+                (Just a,  Just b) -> f a b
                 otherwise -> Nothing
 
-bind3 :: (a -> b -> b -> Maybe c) -> a -> Maybe b -> Maybe b ->  Maybe c
-bind3 f op m n = case (m, n) of
-                  (Just m, Just n) -> f op m n
-                  otherwise -> Nothing
-
-{-   .... `bind` (\n ->
-     .... )
--}
+iD :: a -> Maybe a
+iD n = Just n
 
 
 eval1 :: [(Name, Int)] -> Expr -> Maybe Int
 eval1 _ (Lit (Num n)) = Just n
 eval1 _ (Lit (Bol b)) = Nothing
 eval1 [] (Var y) = Nothing
-eval1 xs (Var y) = case lookup y xs of
-                          Just n -> Just n
-                          otherwise -> Nothing
-  --case (Just xs) `bind` (lookup y)
-eval1 xs (UApp op e1) = case (eval1 xs e1) of
-                        Just n -> cal1 op (eval1 xs e1)
-                        Nothing -> Nothing
--- eval1 xs (BApp op e1 e2) = case (eval1 xs e1, eval1 xs e2) of
---                         (Just m, Just n) -> cal2 op (eval1 xs e1) (eval1 xs e2)
---                         otherwise -> Nothing
+eval1 xs (Var y) = (lookup y xs) `bind` iD
+eval1 xs (UApp op e1) = (eval1 xs e1) `bind` (cal1 op)
+eval1 xs (BApp op e1 e2) = bind2 (cal2 op) (eval1 xs e1) (eval1 xs e2)
 
-eval1 xs (BApp op e1 e2) = case eval1 xs e1 of
-                              Just m -> case eval1 xs e2 of
-                                Just n -> cal2 op (eval1 xs e1) (eval1 xs e2)
-                                otherwise -> Nothing
+
+iDval ::  Int -> Maybe Val
+iDval n = Just (VNum n)
+
+bindval :: Maybe Val -> (Val -> Maybe Val) -> Maybe Val
+m `bindval` f = case m of
+               Just (VNum n) -> f (VNum n)
+               Nothing -> Nothing
+
 
 -- Exercise: extend eval
 data Val = VNum Int | VBol Bool
@@ -207,25 +234,11 @@ eval :: [(Name, Int)] -> Expr -> Maybe Val
 eval _ (Lit (Num n)) = Just (VNum n)
 eval _ (Lit (Bol b)) = Just (VBol b)
 eval [] (Var y) = Nothing
-eval xs (Var y) = case lookup y xs  of
-                    Just n -> Just (VNum n)
-                    otherwise -> Nothing
---eval xs (Var y) = (Just xs) `bind2` (lookup y)
-  -- case lookup y xs  of
-  --                         Just n -> Just (VNum n)
-  --                         otherwise -> Nothing
+eval xs (Var y) = (lookup y xs) `bind` iDval
+eval xs (UApp op e1) = (eval xs e1) `bind` (cal0 op)
+eval xs (BApp op e1 e2) = bind2 (cal op) (eval xs e1) (eval xs e2)
 
--- eval xs (UApp op e1) = case (eval xs e1) of
---                         Just (VNum n) -> cal op (eval xs e1)
---                         Nothing -> Nothing
 
-eval xs (BApp op e1 e2) =  case (eval xs e1, eval xs e2) of
-                        (Just (VNum m), Just (VNum n)) -> cal op (eval xs e1) (eval xs e2)
-                        otherwise -> Nothing-- something intersting 0802
-
--- eval xs (Quant op [ys] e1 e2) = case eval xs e1 of
---                             Just (VNum n)  -> Just (VNum (-n))
---                             otherwise -> Nothing
 
 -- 0809
 -- algorithm-to-solve-linear-equation-in-one-variable
