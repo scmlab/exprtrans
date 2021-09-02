@@ -156,50 +156,58 @@ test2 = Quant Add ["i"] range body
          body = App (Var "f") (Var "i")
 test3 = ((Var "a" `add` Var "b") `add` Var "a") `mul` (Var "b")
 
-test4 = Var "a" `eq` (num 3 `add` num 1)
+test4 = Var "a" `add` (num 3 `add` num 1)
 test5 = UApp Neg (Var "b")
 
 test6 = Quant Add ["a","i"] range body
    where range = Var "a" `lte` Var "i" `lte` Var "b"
          body = App (Var "b") (Var "i")
 
-test7 = Var "a"`lte` (Var "n" `add` num 1 )
+test71 = UApp Neg (num 3)
+test72 = UApp Neg (Var "b")
+test73 = (num 5) `add` (num 3)
+test74 = UApp Neg (Var "b")
+
+
+test75 = ((Var "b") `add` (num 3))`add`((num 0) `add` (num 1))
+test76 = ((num 5) `add` (num 3))`add`((num 0) `add` (num 1))
 test8 = (Var "a" `add` Var "b") `eq` ((num 1 `mul` Var "a") `add` num 1)
 test9 = Var "a" `eq` ((num 1 `mul` Var "a") `add` num 1)
 test0 = Var "a" `add` (UApp Neg (Var "b"))
 testlist = [("a",-2),("b",5)]
 
---shift [("a",1)] Var "n"`lte` (Var "a" `add` num 1 ) --> n `lte` num(a + 1)
---shift [("a",1)] Var "n"`lte` (Var "a" `add` num 1 )`mul` Var "n"
-
 {-
 
-shift Var "n"`lte` (Var "a" `add` num 1 ) =
 
-
-move ::
-move xs op e1 e2 = case op of
-                Add -> move op (open xs e1) (open xs e2)
-                EQ ->  (extend xs e1 , extend xs e2)
-extend ::
 --展開 : 遇到等式拆兩側、遇到計算往下拆
-extend ::
-extend xs e1 = eval xs e1
-extend xs Add e1 e2 = eval xs e1 e2
-extend xs EQ e1 e2 = (extend xs e1, extend xs e2)
-展開等式兩側做遞迴，直到式中沒有多層括號
-當都整理完了
-帶入變數處理
-比對兩側是否都有指定變數
-移項
 -}
+
+
+-- tidy (BApp op (Lit(Num m)) (Lit(Num n))) = cal_unfold op (Lit (Num m)) (Lit (Num n))
+-- --tidy (BApp op e1 e2) = BApp op (tidy e1) e2
+-- tidy (BApp op e1 e2) = cal_unfold op (tidy e1) (tidy e2)
+test101 = BApp Add (num 2) (Var "a")
+test102 = BApp Add  (Var "a")(num  2)
+test103 = BApp Add (num 2) (num 2)
+test104 = BApp Sub (num 2) (Var "a")
+test105 = BApp Sub  (Var "a")(num  2)
+test106 = BApp Sub (num 2) (num 2)
+test107 = BApp Add (BApp Add (num 2) (num 2)) (num 3)
+test108 = BApp Add (BApp Add (BApp Add (num 2) (num 2)) (num 3))(num 7)
+test109 = BApp Add (BApp Add (num 2) (num 2)) (num 3)
+
+
+
+
+
 
 bind :: Maybe a -> (a -> Maybe b) -> Maybe b
 m `bind` f = case m of
                Just n -> f n
                Nothing -> Nothing
 
-bind2 :: (a -> a -> Maybe b) -> Maybe a -> Maybe a -> Maybe b
+--bind2 :: (a -> a -> Maybe b) -> Maybe a -> Maybe a -> Maybe b
+bind2 :: (a -> b -> Maybe c) -> Maybe a -> Maybe b -> Maybe c
 bind2 f m n = case (m , n) of
                 (Just a,  Just b) -> f a b
                 otherwise -> Nothing
@@ -213,9 +221,12 @@ eval1 _ (Lit (Num n)) = Just n
 eval1 _ (Lit (Bol b)) = Nothing
 eval1 [] (Var y) = Nothing
 eval1 xs (Var y) = (lookup y xs) `bind` iD
+      -- SCM: monad law, to be talked about later.
 eval1 xs (UApp op e1) = (eval1 xs e1) `bind` (cal1 op)
-eval1 xs (BApp op e1 e2) = bind2 (cal2 op) (eval1 xs e1) (eval1 xs e2)
-
+eval1 xs (BApp op e1 e2) = -- bind2 (cal2 op) (eval1 xs e1) (eval1 xs e2)
+  eval1 xs e1 `bind` \i ->
+  eval1 xs e2 `bind` \j ->
+  cal2 op i j
 
 iDval ::  Int -> Maybe Val
 iDval n = Just (VNum n)
@@ -236,9 +247,100 @@ eval _ (Lit (Bol b)) = Just (VBol b)
 eval [] (Var y) = Nothing
 eval xs (Var y) = (lookup y xs) `bind` iDval
 eval xs (UApp op e1) = (eval xs e1) `bind` (cal0 op)
-eval xs (BApp op e1 e2) = bind2 (cal op) (eval xs e1) (eval xs e2)
+eval xs (BApp op e1 e2) = --bind2 (cal op) (eval xs e1) (eval xs e2)
+      eval xs e1 `bind` \i ->
+      eval xs e2 `bind` \j ->
+      cal op i j
+
+data POS = POS_Var (Name, Int)
+         | POS_Num  Int
+         | POS_BApp Op POS POS
+              deriving (Eq, Show)
+-- cal_POS :: Op -> POS -> POS -> POS
 
 
+
+-- (4x + 2)+6
+-- = 4x + (2+6)
+-- = 4x + 8
+-- BApp EQ  e1 e2
+-- 1. e1, e2
+
+
+{-
+extend xs e1 = eval xs e1
+extend xs Add e1 e2 = eval xs e1 e2
+extend xs EQ e1 e2 = (extend xs e1, extend xs e2)
+展開等式兩側做遞迴，直到式中沒有多層括號
+當沒有括號做比對->完成整理
+
+當都整理完了
+帶入變數處理
+比對（compare）兩側是否都有指定變數
+移項
+-}
+data  ExprP = LitP Int
+           -- | VarP Name
+           | VarP Name Int
+           | AddP ExprP ExprP
+           | MulP ExprP ExprP
+           | NegP ExprP
+           deriving (Eq, Show)
+
+
+poly :: Name -> ExprP -> [ExprP]
+poly _ (LitP n) = [LitP n]
+poly x (VarP y n) | x == y = [LitP n]
+                  | otherwise = [VarP y n]
+poly x (AddP e1 e2) = padd (poly x e1) (poly x e2)
+--   --- padd [2+3y,3+y,4,0,2] [4, 3, z]
+poly x (MulP e1 e2) = pmul (poly x e1) (poly x e2)
+--   --- pmul [2+3y,3+y,4,0,2] [4, 3, z]
+-- poly x (NegP e) = pneg (poly x e)
+
+
+padd :: [ExprP] -> [ExprP] -> [ExprP]
+padd [] [] = []
+padd e1 [] = e1
+padd [] e2 = e2
+padd ((LitP m):xs) ((LitP n):ys) = [LitP (m+n)] ++ (padd xs ys)
+
+padd ((VarP x m):xs) ((VarP y n):ys) | x == y = [VarP x (m+n)] ++ (padd xs ys)
+                                     | otherwise = [AddP (VarP x m) (VarP y n)]++ (padd xs ys)
+
+padd ((LitP m):xs) ((VarP y n):ys) = [AddP (VarP y n) (LitP m)] ++ (padd xs ys)
+padd ((VarP y n):ys) ((LitP m):xs) = [AddP (VarP y n) (LitP m)] ++ (padd xs ys)
+
+pmul :: [ExprP] -> [ExprP] -> [ExprP]
+pmul [] [] = []
+pmul e1 [] = []
+pmul [] e2 = []
+pmul [(LitP m)]   [(LitP n)]   = [LitP (m*n)]
+pmul [(LitP m)]   [(VarP x n)] = [VarP x (m*n)]
+pmul [(VarP x n)] [(LitP m)]   = [VarP x (m*n)]
+pmul [(VarP x m)] [(VarP y n)] = [MulP (VarP x m) (VarP y m)]
+pmul (x:xs) [y] = (pmul [x] [y]) ++ (pmul xs [y])
+pmul xs (y:ys) = padd (pmul xs [y]) (pmul xs ys)
+--pmul xs ((LitP n):ys) = (map (pmul [LitP n]) xs) padd (pmul xs ys)
+-- pmul xs ys = []
+
+-- -- pmul
+-- --
+-- pneg :: [ExprP] -> [ExprP]
+-- pneg xs = []
+-- pneg
+
+{-
+poly :: Name -> ExprP -> M [ExprP]
+poly _ (Lit n) = return [Lit n]
+poly x (Var y) | x == y = .....
+               | otherwise = ...
+poly x (Add e1 e2) = padd (poly x e1) (poly x e2)
+  --- padd [2+3y,3+y,4,0,2] [4, 3, z]
+poly x (Mul e1 e2) = pmul (poly x e1) (poly x e2)
+  --- pmul [2+3y,3+y,4,0,2] [4, 3, z]
+poly x (Neg e) = pneg (poly x e)
+-}
 
 -- 0809
 -- algorithm-to-solve-linear-equation-in-one-variable
@@ -435,5 +537,56 @@ eval xs (BApp op e1 e2) = case eval xs e1 of
                                                     otherwise -> Nothing
                                           otherwise -> Nothing
                             otherwise -> Nothing -- something intersting 0802
+0825
+testlist1 = [(Var "a",Just 1),(Var "cons",Just 2)]
+tidy :: [(Expr, Maybe Int)] -> [(Expr, Maybe Int)]
+tidy [] = []
+tidy [(Var a, Just n)] = [(Var a, Just n)]
+tidy (x:xs) = [x] ++ (filter (\(a,_) -> a == fst x) xs) ++ tidy (filter (\(a,_) -> a /= fst x) xs)
+
+tidy_sum :: [(Expr, Maybe Int)] -> [(Expr, Maybe Int)]
+tidy_sum [(Var a,Just m),(Var a,Just n)] = :
+
+second :: [(Expr, Maybe Int)] -> Maybe Int
+second [(Var a, Just n)] = Just n
+
+--sum_maybe :: Maybe Int -> Maybe Int
+
+-- tidy_sum :: [(Expr, Maybe Int)] -> [(Expr, Maybe Int)]
+-- tidy_sum [(Var m, Just n)]x++xs = [(Var m, sum_maybe(second(x:xs)))]
+--
+-- tidy_sum :: [(Expr, Maybe Int)] -> [(Expr, Maybe Int)]
+-- tidy_sum (x++xs) = [(fst x, sum_maybe(second(x:xs)))]
+
+
+convert ::  Expr -> [(Expr, Maybe Int)]
+convert (Lit(Num n)) = [(Var "cons", Just n)]
+convert (Var m) = [(Var m, Just 1)]
+convert (UApp Neg (Lit(Num n))) = [(Var "cons", Just (-n))]
+convert (UApp Neg (Var m)) = [(Var m, Just (-1))]
+convert (BApp op (Lit(Num m)) (Lit(Num n))) = case op of
+                                              Add -> [(Var "cons", Just (m+n))]
+                                              Sub -> [(Var "cons", Just (m-n))]
+                                              Mul -> [(Var "cons", Just (m*n))]
+                                              Div -> case n of
+                                                        0 -> [(Var "cons", Nothing)]
+                                                        otherwise -> [(Var "cons", Just (div m n))]
+
+-- convert (BApp Add (Lit(Num m)) (Lit(Num n))) = [(Var "cons", Just (m+n))]
+-- convert (BApp Sub (Lit(Num m)) (Lit(Num n))) = [(Var "cons", Just (m-n))]
+-- convert (BApp Mul (Lit(Num m)) (Lit(Num n))) = [(Var "cons", Just (m*n))]
+-- convert (BApp Div (Lit(Num m)) (Lit(Num n))) = case n of
+--                                                 0 -> [(Var "cons", Nothing)]
+--                                                 otherwise -> [(Var "cons", Just (div m n))]
+-- convert [] (BApp op e1 e2) = case (e1, e2) of
+--                               ((Lit(Num m),(Lit(Num n)) -> [("cons", Just (cal2 op m n)]
+
+convert (BApp Add e1 e2) = convert e1 ++ convert e2
+shift Var "n"`lte` (Var "a" `add` num 1 ) =
+
+move ::
+move xs op e1 e2 = case op of
+                Add -> move op (open xs e1) (open xs e2)
+                EQ ->  (extend xs e1 , extend xs e2)
 
 -}
