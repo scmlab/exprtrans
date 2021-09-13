@@ -167,7 +167,7 @@ test71 = UApp Neg (num 3)
 test72 = UApp Neg (Var "b")
 test73 = (num 5) `add` (num 3)
 test74 = UApp Neg (Var "b")
-
+test78 = (Var "b")
 
 test75 = ((Var "b") `add` (num 3))`add`((num 0) `add` (num 1))
 test76 = ((num 5) `add` (num 3))`add`((num 0) `add` (num 1))
@@ -186,15 +186,7 @@ testlist = [("a",-2),("b",5)]
 -- tidy (BApp op (Lit(Num m)) (Lit(Num n))) = cal_unfold op (Lit (Num m)) (Lit (Num n))
 -- --tidy (BApp op e1 e2) = BApp op (tidy e1) e2
 -- tidy (BApp op e1 e2) = cal_unfold op (tidy e1) (tidy e2)
-test101 = BApp Add (num 2) (Var "a")
-test102 = BApp Add  (Var "a")(num  2)
-test103 = BApp Add (num 2) (num 2)
-test104 = BApp Sub (num 2) (Var "a")
-test105 = BApp Sub  (Var "a")(num  2)
-test106 = BApp Sub (num 2) (num 2)
-test107 = BApp Add (BApp Add (num 2) (num 2)) (num 3)
-test108 = BApp Add (BApp Add (BApp Add (num 2) (num 2)) (num 3))(num 7)
-test109 = BApp Add (BApp Add (num 2) (num 2)) (num 3)
+
 
 
 
@@ -279,13 +271,185 @@ extend xs EQ e1 e2 = (extend xs e1, extend xs e2)
 比對（compare）兩側是否都有指定變數
 移項
 -}
-data  ExprP = LitP Int
-           -- | VarP Name
-           | VarP Name Int
-           | AddP ExprP ExprP
-           | MulP ExprP ExprP
-           | NegP ExprP
-           deriving (Eq, Show)
+-- data  ExprP = LitP Int
+--            -- | VarP Name
+--            | VarP Name Int
+--            | AddP ExprP ExprP
+--            | MulP ExprP ExprP
+--            | NegP ExprP
+--            deriving (Eq, Show)
+
+{-
+data Expr
+  = Lit Lit
+  | Var Name
+  | BApp Op Expr Expr   -- e.g. BApp Add e1 e2
+  | UApp Op Expr        -- e.g. Neg e
+  | Quant Op [Name] Expr Expr
+  | App Expr Expr
+  --  | Op Op
+  --  | Lam Name Expr
+  deriving (Eq, Show)
+-}
+type M a = Maybe a
+
+-- bindM :: M a -> (a -> M b) -> M b
+
+
+{-
+  poly x (BApp Add (BApp Add (BApp Mul (Var "x")(num 3))(num 12))
+                   (BApp Add (BApp Mul (num 5)(Var "x"))(num 7)))
+= padd (poly x (BApp Add (BApp Mul (Var "x")(num 3))(num 12)))
+       (poly x (BApp Add (BApp Mul (num 5)(Var "x"))(num 7))))
+
+= padd (poly x (padd (poly x (BApp Mul (Var "x")(num 3))
+                     (poly x (num 12)))
+
+       (poly x (padd (poly x (BApp Mul (num 5)(Var "x"))
+                     (poly x (num 7))))
+
+= padd (poly x (padd (poly x (pmul (poly x (Var "x")
+                                   (poly x (num 3))
+                    (poly x (num 12)))
+
+      (poly x (padd (poly x (pmul (poly x (num 5)
+                                  (poly x (Var "x"))
+                    (poly x (num 7))))
+
+= padd (poly x (padd (poly x (pmul ([(Var "x")] [(num 3)])(poly x (num 12)))
+
+      (poly x (padd (poly x (pmul (poly x (num 5)
+                                  (poly x (Var "x"))
+                    (poly x (num 7))))
+
+= padd (poly x (padd (poly x (BApp Mul [(Var "x")] [(num 3)])[(num 12)]))
+
+
+= poly x [3*x,12] [5*x,7]
+= {poly x [3*x*5*x,12*5*x]} `padd` {poly x [3*x*7, 12*7]}
+= [15, 60] []
+= []
+
+-}
+--
+-- f :: a -> a -> a -> [b]
+-- f x y z= concat (map (\j -> concat (map (\i -> e3 i j)) (f y)) (f z))
+--
+-- e3 ::  a -> a -> a
+
+test101 = BApp Add (BApp Mul (num 2) (Var "x")) (BApp Mul (BApp Mul (Var "x") (Var "x")) (num 2))
+test102 = BApp Add  (Var "a")(num  2)
+test103 = BApp Add (num 2) (num 2)
+test104 = BApp Sub (num 2) (Var "a")
+test105 = BApp Sub  (Var "a")(num  2)
+test106 = BApp Sub (num 2) (num 2)
+test107 = BApp Add (BApp Add (Var "a") (num 2)) (Var "a")
+test108 = BApp Add (BApp Add (BApp Add (num 2) (num 2)) (num 3))(num 7)
+test109 = BApp Add (BApp Add (Var "x") (num 2)) (num 3)
+test110 = BApp Add (BApp Mul (Var "x") (num 2)) (num 3)
+
+poly :: Name -> Expr -> [Expr]
+poly _ (Lit n) = [Lit n]
+-- poly _ (Var y) = [Var y]
+poly x (Var y) | x == y = [Lit(Num 0), Lit(Num 1)]
+               | otherwise = [(Var y)]
+poly x (BApp Add e1 e2) = padd (poly x e1) (poly x e2)
+--   --- padd [2+3y,3+y,4,0,2] [4, 3, z]
+poly x (BApp Mul e1 e2) = pmul (poly x e1) (poly x e2)
+--   --- pmul [2+3y,3+y,4,0,2] [4, 3, z]
+poly x (UApp Neg e) = pneg (poly x e)
+
+-- 0913-- after meeting
+padd :: [Expr] -> [Expr] -> [Expr]
+padd as [] = as
+padd [] bs = bs
+padd (a:as) (b:bs) = case (a,b) of
+                    ((Lit (Num m)), (Lit (Num n))) -> [Lit (Num (m+n))] ++ padd as bs
+                    otherwise -> [BApp Add a b] ++ padd as bs
+
+pmul :: [Expr] -> [Expr] -> [Expr]
+pmul [] bs = []
+pmul (a:as) bs = padd (map(pmul1 a) bs) ([Lit (Num 0)]++(pmul as bs))
+
+pmul1 :: Expr -> Expr -> Expr
+pmul1 (Lit (Num m)) (Lit (Num n)) = (Lit (Num (m*n)))
+pmul1 e1 e2 = BApp Mul e1 e2
+
+
+pneg :: [Expr] -> [Expr]
+pneg [e1] = [UApp Neg e1]
+
+--                                             [Lit (Num 1)]
+-- BApp Add (BApp Add (Var "b") (Lit (Num 3))) (BApp Add (Lit (Num 0)) (Lit (Num 1)))
+{-0913
+padd :: [Expr] -> [Expr] -> [Expr]
+padd e1 [] = e1
+padd [] e2 = e2
+padd [Lit(Num m)] [Lit(Num n)] = [Lit(Num(m+n))]
+padd [Lit(Num m)] [(Var y)]    = [BApp Add (Var y)(Lit(Num m))]
+padd [(Var y)]    [Lit(Num m)] = [BApp Add (Var y)(Lit(Num m))]
+
+pmul :: [Expr] -> [Expr] -> [Expr]
+pmul [] [] = []
+pmul xs [] = []
+pmul [] ys = []
+pmul [Lit(Num m)][Lit(Num n)] = [Lit(Num(m*n))]
+
+
+
+padd :: [Expr] -> [Expr] -> [Expr]
+padd e1 [] = e1
+padd [] e2 = e2
+-- padd e1 e2 = e1++e2
+padd [Lit(Num m)] [Lit(Num n)] = [Lit(Num(m+n))]
+padd [Lit(Num m)] [(Var y)]    = [BApp Add (Var y)(Lit(Num m))]
+padd [(Var y)]    [Lit(Num m)] = [BApp Add (Var y)(Lit(Num m))]
+padd [e1] [e2] = case (e1,e2) of
+                (BApp Add (Var x)(Lit (Num n)) , Lit (Num m)) -> [BApp Add (Lit(Num (m+n))) (Var x)]
+                (BApp Add (Var x)(Lit (Num n)) , (Var y)) -> if x == y then [(BApp Add (BApp Mul (Var x)(Lit(Num 2))) (Lit(Num n)))]
+                                                                       else [BApp Add (BApp Add  (Var x) (Var y)) (Lit(Num n))]
+                (BApp Add (Var x)(Lit (Num m)) ,(BApp Add (Var y)(Lit (Num n))) ) ->  if x == y then [BApp Add (Var x)(Lit(Num (m+n))) ]
+                                                                                                else [BApp Add (BApp Add (Var x) (Var y)) (Lit(Num (m+n)))]
+
+pmul :: [Expr] -> [Expr] -> [Expr]
+pmul [] [] = []
+pmul xs [] = []
+pmul [] ys = []
+pmul [Lit(Num m)][Lit(Num n)] = [Lit(Num(m*n))]
+pmul [e1] [e2] = case (e1,e2) of
+                (BApp Mul (Var x)(Lit (Num n)) , Lit (Num m)) -> [BApp Add (Lit(Num (m*n))) (Var x)]
+                (BApp Mul (Var x)(Lit (Num n)) , (Var y)) -> if x == y then [(BApp Mul (BApp Mul (Var x)(Var x)) (Lit(Num n)))]
+                                                                       else [BApp Mul (BApp Add  (Var x) (Var y)) (Lit(Num n))]
+                (BApp Mul (Var x)(Lit (Num m)) ,(BApp Mul (Lit (Num n)) (Var y))) ->  if x == y then [BApp Mul (BApp Mul (Var x)(Var x)) (Lit(Num (m*n))) ]
+                                                                                                else [BApp Mul (BApp Mul (Var x) (Var y)) (Lit(Num (m*n)))]
+
+-}
+-- pmul (x:xs) [y] = (pmul [x] [y]) ++ (pmul xs [y])
+-- pmul xs (y:ys) = padd (pmul xs [y]) (pmul xs ys)
+
+{-
+padd :: [Expr] -> [Expr] -> [Expr]
+padd e1 [] = e1
+padd [] e2 = e2
+padd [Lit(Num m)][Lit(Num n)] = [Lit(Num(m+n))]
+padd [Lit(Num m)][(Var y)]    = [BApp Add (Lit(Num m)) (Var y)]
+padd [(Var y)][Lit(Num m)]    = [BApp Add (Lit(Num m)) (Var y)]
+-- padd ((Lit m):xs) ((Var y n):ys) = [BApp Add (Var y n) (Lit m)] ++ (padd xs ys)
+-- padd ((Var y n):ys) ((Lit m):xs) = [BApp Add (Var y n) (Lit m)] ++ (padd xs ys)
+
+-- padd [e1] [e2] = [BApp Add e1 e2]
+
+pmul :: [Expr] -> [Expr] -> [Expr]
+pmul [] [] = []
+pmul xs [] = []
+pmul [] ys = []
+pmul [Lit(Num m)][Lit(Num n)] = [Lit(Num(m*n))]
+pmul (x:xs) [y] = (pmul [x] [y]) ++ (pmul xs [y])
+pmul xs (y:ys) = padd (pmul xs [y]) (pmul xs ys)
+
+
+pneg :: [Expr] -> [Expr]
+pneg [e1] = [UApp Neg e1]
 
 
 poly :: Name -> ExprP -> [ExprP]
@@ -324,11 +488,13 @@ pmul xs (y:ys) = padd (pmul xs [y]) (pmul xs ys)
 --pmul xs ((LitP n):ys) = (map (pmul [LitP n]) xs) padd (pmul xs ys)
 -- pmul xs ys = []
 
--- -- pmul
+-- -- pmulcd
 -- --
 -- pneg :: [ExprP] -> [ExprP]
 -- pneg xs = []
 -- pneg
+
+-}
 
 {-
 poly :: Name -> ExprP -> M [ExprP]
