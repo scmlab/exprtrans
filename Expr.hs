@@ -9,6 +9,7 @@ data Expr
   | BApp Op Expr Expr   -- e.g. BApp Add e1 e2
   | UApp Op Expr        -- e.g. Neg e
   | Quant Op [Name] Expr Expr
+  | Exists [Name] Expr Expr
   | App Expr Expr
   --  | Op Op
   --  | Lam Name Expr
@@ -123,7 +124,6 @@ cal LT  (VNum m) (VNum n) = Just (VBol (m < n))
 cal GT  (VNum m) (VNum n) = Just (VBol (m > n))
 
 
-
 free :: Expr -> [Name]
 free (Lit n) = []
 free (Var x) = [x]
@@ -132,6 +132,7 @@ free (BApp op e1 e2) = free e1 ++ free e2
 free (UApp op e) = free e
 -- e.g. Neg e
 free (Quant op xs e1 e2) = subtraction ((free e1 ++ free e2), xs)
+free (Exists xs e1 e2)= subtraction ((free e1 ++ free e2), xs)
 free (App e1 e2) = free e1 ++ free e2
 
 -- SCM: finish the definition
@@ -147,6 +148,10 @@ subtraction (xs, []) = xs
 subtraction (xs, y:ys) = subtraction (filter (not . (==y)) xs, ys)
                          -- was: subtraction1 xs y
 
+-- Var "m", num 3, BApp add (num 3)(Var "m")
+-- Quant Add ["i"] range body
+--    where range = Var "m" `lte` Var "i" `lte` Var "n"
+--          body = App (Var "f") (Var "i")
 
 
 {- some test example -}
@@ -156,7 +161,7 @@ test2 = Quant Add ["i"] range body
          body = App (Var "f") (Var "i")
 test3 = ((Var "a" `add` Var "b") `add` Var "a") `mul` (Var "b")
 
-test4 = Var "a" `add` (num 3 `add` num 1)
+test4 = Var "a" `eq` (num 3 `add` num 1)
 test5 = UApp Neg (Var "b")
 
 test6 = Quant Add ["a","i"] range body
@@ -175,20 +180,6 @@ test8 = (Var "a" `add` Var "b") `eq` ((num 1 `mul` Var "a") `add` num 1)
 test9 = Var "a" `eq` ((num 1 `mul` Var "a") `add` num 1)
 test0 = Var "a" `add` (UApp Neg (Var "b"))
 testlist = [("a",-2),("b",5)]
-
-{-
-
-
---展開 : 遇到等式拆兩側、遇到計算往下拆
--}
-
-
--- tidy (BApp op (Lit(Num m)) (Lit(Num n))) = cal_unfold op (Lit (Num m)) (Lit (Num n))
--- --tidy (BApp op e1 e2) = BApp op (tidy e1) e2
--- tidy (BApp op e1 e2) = cal_unfold op (tidy e1) (tidy e2)
-
-
-
 
 
 
@@ -233,65 +224,19 @@ m `bindval` f = case m of
 data Val = VNum Int | VBol Bool
           deriving (Eq, Show)
 
-eval :: [(Name, Int)] -> Expr -> Maybe Val
-eval _ (Lit (Num n)) = Just (VNum n)
-eval _ (Lit (Bol b)) = Just (VBol b)
-eval [] (Var y) = Nothing
-eval xs (Var y) = (lookup y xs) `bind` iDval
-eval xs (UApp op e1) = (eval xs e1) `bind` (cal0 op)
-eval xs (BApp op e1 e2) = --bind2 (cal op) (eval xs e1) (eval xs e2)
-      eval xs e1 `bind` \i ->
-      eval xs e2 `bind` \j ->
-      cal op i j
-
-data POS = POS_Var (Name, Int)
-         | POS_Num  Int
-         | POS_BApp Op POS POS
-              deriving (Eq, Show)
--- cal_POS :: Op -> POS -> POS -> POS
+-- eval :: [(Name, Int)] -> Expr -> Maybe Val
+-- eval _ (Lit (Num n)) = Just (VNum n)
+-- eval _ (Lit (Bol b)) = Just (VBol b)
+-- eval [] (Var y) = Nothing
+-- eval xs (Var y) = (lookup y xs) `bind` iDval
+-- eval xs (UApp op e1) = (eval xs e1) `bind` (cal0 op)
+-- eval xs (BApp op e1 e2) = --bind2 (cal op) (eval xs e1) (eval xs e2)
+--       eval xs e1 `bind` \i ->
+--       eval xs e2 `bind` \j ->
+--       cal op i j
 
 
 
--- (4x + 2)+6
--- = 4x + (2+6)
--- = 4x + 8
--- BApp EQ  e1 e2
--- 1. e1, e2
-
-
-{-
-extend xs e1 = eval xs e1
-extend xs Add e1 e2 = eval xs e1 e2
-extend xs EQ e1 e2 = (extend xs e1, extend xs e2)
-展開等式兩側做遞迴，直到式中沒有多層括號
-當沒有括號做比對->完成整理
-
-當都整理完了
-帶入變數處理
-比對（compare）兩側是否都有指定變數
-移項
--}
--- data  ExprP = LitP Int
---            -- | VarP Name
---            | VarP Name Int
---            | AddP ExprP ExprP
---            | MulP ExprP ExprP
---            | NegP ExprP
---            deriving (Eq, Show)
-
-{-
-data Expr
-  = Lit Lit
-  | Var Name
-  | BApp Op Expr Expr   -- e.g. BApp Add e1 e2
-  | UApp Op Expr        -- e.g. Neg e
-  | Quant Op [Name] Expr Expr
-  | App Expr Expr
-  --  | Op Op
-  --  | Lam Name Expr
-  deriving (Eq, Show)
--}
-type M a = Maybe a
 
 -- bindM :: M a -> (a -> M b) -> M b
 
@@ -348,24 +293,35 @@ test108 = BApp Add (BApp Add (BApp Add (num 2) (num 2)) (num 3))(num 7)
 test109 = BApp Add (BApp Add (Var "x") (num 2)) (num 3)
 test110 = BApp Add (BApp Mul (Var "x") (num 2)) (num 3)
 
+move :: Expr -> Expr
+move (BApp EQ e1 e2) = BApp Sub e2 e1
+
 poly :: Name -> Expr -> [Expr]
 poly _ (Lit n) = [Lit n]
--- poly _ (Var y) = [Var y]
 poly x (Var y) | x == y = [Lit(Num 0), Lit(Num 1)]
                | otherwise = [(Var y)]
 poly x (BApp Add e1 e2) = padd (poly x e1) (poly x e2)
+poly x (BApp Sub e1 e2) = psub (poly x e1) (poly x e2)
 --   --- padd [2+3y,3+y,4,0,2] [4, 3, z]
 poly x (BApp Mul e1 e2) = pmul (poly x e1) (poly x e2)
 --   --- pmul [2+3y,3+y,4,0,2] [4, 3, z]
 poly x (UApp Neg e) = pneg (poly x e)
 
--- 0913-- after meeting
+
 padd :: [Expr] -> [Expr] -> [Expr]
 padd as [] = as
 padd [] bs = bs
-padd (a:as) (b:bs) = case (a,b) of
-                    ((Lit (Num m)), (Lit (Num n))) -> [Lit (Num (m+n))] ++ padd as bs
-                    otherwise -> [BApp Add a b] ++ padd as bs
+padd (a:as) (b:bs) =
+  case (a,b) of
+      ((Lit (Num m)), (Lit (Num n))) -> [Lit (Num (m+n))] ++ padd as bs
+      otherwise -> [BApp Add a b] ++ padd as bs
+
+psub :: [Expr] -> [Expr] -> [Expr]
+psub as [] = as
+psub (a:as) (b:bs) =
+  case (a,b) of
+      ((Lit (Num m)), (Lit (Num n))) -> [Lit (Num (m-n))] ++ psub as bs
+      otherwise -> [BApp Sub a b] ++ padd as bs
 
 pmul :: [Expr] -> [Expr] -> [Expr]
 pmul [] bs = []
@@ -375,9 +331,98 @@ pmul1 :: Expr -> Expr -> Expr
 pmul1 (Lit (Num m)) (Lit (Num n)) = (Lit (Num (m*n)))
 pmul1 e1 e2 = BApp Mul e1 e2
 
-
 pneg :: [Expr] -> [Expr]
 pneg [e1] = [UApp Neg e1]
+
+calDiv :: Expr -> Expr -> Maybe Expr
+calDiv _ (Lit (Num 0)) = Nothing
+calDiv e1 e2 = case (e1,e2) of
+          ((Lit (Num m)), (Lit (Num n)))
+                -> case n of
+                  0 -> Nothing
+                  otherwise -> Just (num (div m n))
+          (_, (Lit (Num 1))) ->  Just e1
+          otherwise -> Just(BApp Div e1 e2)
+
+
+
+
+
+calculate :: [Expr] -> Maybe Expr
+calculate xs | length xs == 1 = Just (xs !! 0)
+             | length xs == 2 = calDiv (xs!!0)(xs!!1)
+             | otherwise = Nothing
+
+toPair :: Name -> Maybe Expr -> (Name, Expr)
+toPair y (Just e1) =  (y, (UApp Neg e1))
+
+pushback :: (Name, Expr)-> Expr -> Expr
+pushback (x, e1) (Var y) | x == y = e1
+                         | otherwise =  (Var y)
+pushback (x, e1) (BApp op e2 e3) =
+  BApp op (pushback (x, e1) e2) (pushback (x, e1) e3)
+
+tidy :: Expr -> Expr
+tidy (Exists [n] relation body)=
+  pushback (toPair (n) (calculate (poly n (move relation)))) body
+
+
+-- Exists [Name] Expr Expr
+-- putback _ e2 =
+-- putback _ (Lit (Num n)) = Just n
+-- putback [] (Var y) = Nothing
+-- putback xs (Var y) = (lookup y xs) `bind` iD
+--       -- SCM: monad law, to be talked about later.
+-- putback xs (UApp op e1) = (eval1 xs e1) `bind` (cal1 op)
+-- putback xs (BApp op e1 e2) = -- bind2 (cal2 op) (eval1 xs e1) (eval1 xs e2)
+--   putback xs e1 `bind` \i ->
+--   putback xs e2 `bind` \j ->
+--   cal2 op i j
+
+
+
+-- plugin :: Maybe Expr -> Expr -> Maybe Expr
+-- plugin Nothing _ = Nothing
+-- plugin (Just e1) e2 =
+{-
+  tidy test00
+
+= tidy (Exists A B C)
+
+= tidy (A (move B) C)
+
+= tidy (poly A (move B)) C
+  -- poly A (move B) = Just (Lit (Num (-4)))
+= tidy (Just (Lit (Num (-4)))) C
+
+= tidy toList(A (Just (Lit (Num (-4))))) C
+
+toList (Var "a") (calculate(poly "a" (move test4)))
+[("a",-4)]
+
+= tidy [A, num -4] C
+eval [A, num -4] (2a+b-c)
+
+= tidy eval1 xs C
+-}
+
+
+-- toList _ Nothing = Nothing
+
+-- tidy :: Expr -> Maybe Expr
+-- tidy (Exists [n] relation body) =
+
+--
+-- test00 = Exists ["n"] relation body
+--         where relation = Var "n" `eq`(Var "m" `sub` (num 1))
+--               body = (Var "r") `eq` (Var "P" `mul` Var "n")
+-- body = (Var "r") `eq` (Var "P" `mul` Var "n")
+-- relation = Var "n" `eq`(Var "m" `sub` (num 1))
+test00 = Exists ["n"] relation body
+        where relation = Var "m" `eq`(Var "n" `sub` (num 1))
+              body = (Var "r") `eq` (Var "P" `mul` Var "n")
+relation = Var "m" `eq`(Var "n" `sub` (num 1))
+body = (Var "r") `eq` (Var "P" `mul` Var "n")
 
 --                                             [Lit (Num 1)]
 -- BApp Add (BApp Add (Var "b") (Lit (Num 3))) (BApp Add (Lit (Num 0)) (Lit (Num 1)))
